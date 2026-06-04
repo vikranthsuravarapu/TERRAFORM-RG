@@ -49,7 +49,7 @@ variables:
   - name: stateFile
     value: "${{ parameters.environment }}.terraform.tfstate"
   - name: workingDirectory
-    value: "$(System.DefaultWorkingDirectory)/terraform"
+    value: "$(System.DefaultWorkingDirectory)"
 
 # ═══════════════════════════════════════════════════════════════════
 # STAGE 1 — PLAN
