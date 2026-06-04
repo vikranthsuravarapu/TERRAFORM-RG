@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════
-# ADO Terraform Pipeline — No Extensions, Service Connection Auth
-# With Remote Backend (Azure Blob Storage)
+# ADO Terraform Pipeline — OIDC/Workload Identity Federation
+# No Extensions, Service Connection Auth
 # ═══════════════════════════════════════════════════════════════════
 
 trigger: none
@@ -70,7 +70,7 @@ stages:
               terraform version
             displayName: "Install Terraform $(terraformVersion)"
 
-          # Terraform Init — service connection + backend config
+          # Terraform Init — OIDC auth via service connection
           - task: AzureCLI@2
             displayName: "Terraform Init"
             inputs:
@@ -81,9 +81,10 @@ stages:
               addSpnToEnvironment: true
               inlineScript: |
                 export ARM_CLIENT_ID=$servicePrincipalId
-                export ARM_CLIENT_SECRET=$servicePrincipalKey
+                export ARM_OIDC_TOKEN=$idToken
                 export ARM_TENANT_ID=$tenantId
                 export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                export ARM_USE_OIDC=true
 
                 terraform init \
                   -backend-config="resource_group_name=$(backendResourceGroup)" \
@@ -102,9 +103,10 @@ stages:
               addSpnToEnvironment: true
               inlineScript: |
                 export ARM_CLIENT_ID=$servicePrincipalId
-                export ARM_CLIENT_SECRET=$servicePrincipalKey
+                export ARM_OIDC_TOKEN=$idToken
                 export ARM_TENANT_ID=$tenantId
                 export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                export ARM_USE_OIDC=true
 
                 if [ "${{ parameters.action }}" = "Destroy" ]; then
                   terraform plan -destroy -out=tfplan \
@@ -164,9 +166,10 @@ stages:
                     addSpnToEnvironment: true
                     inlineScript: |
                       export ARM_CLIENT_ID=$servicePrincipalId
-                      export ARM_CLIENT_SECRET=$servicePrincipalKey
+                      export ARM_OIDC_TOKEN=$idToken
                       export ARM_TENANT_ID=$tenantId
                       export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                      export ARM_USE_OIDC=true
 
                       terraform init \
                         -backend-config="resource_group_name=$(backendResourceGroup)" \
@@ -185,7 +188,8 @@ stages:
                     addSpnToEnvironment: true
                     inlineScript: |
                       export ARM_CLIENT_ID=$servicePrincipalId
-                      export ARM_CLIENT_SECRET=$servicePrincipalKey
+                      export ARM_OIDC_TOKEN=$idToken
                       export ARM_TENANT_ID=$tenantId
                       export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                      export ARM_USE_OIDC=true
                       terraform apply -auto-approve tfplan
