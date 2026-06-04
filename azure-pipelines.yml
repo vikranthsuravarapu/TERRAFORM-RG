@@ -1,21 +1,17 @@
 # ═══════════════════════════════════════════════════════════════════
-# ADO Terraform Pipeline — Manual Trigger with Create / Destroy
-# Service Connection: subscriptionauthenticator
+# ADO Terraform Pipeline — No Extensions, Service Connection Auth
+# With Remote Backend (Azure Blob Storage)
 # ═══════════════════════════════════════════════════════════════════
 
-# ── No automatic trigger — manual only ──────────────────────────
 trigger: none
 pr: none
 
-# ── Agent ────────────────────────────────────────────────────────
 pool:
   vmImage: ubuntu-latest
 
-# ── Manual Parameters — shown as dropdown when you queue the pipeline
 parameters:
-
   - name: action
-    displayName: "Action — What do you want to do?"
+    displayName: "What do you want to do?"
     type: string
     default: Create
     values:
@@ -41,10 +37,9 @@ parameters:
       - eastus
       - southindia
 
-# ── Variables ────────────────────────────────────────────────────
 variables:
   - name: terraformVersion
-    value: "1.7.0"
+    value: "1.7.5"
   - name: backendResourceGroup
     value: "rg-terraform-state"
   - name: backendStorageAccount
@@ -52,111 +47,76 @@ variables:
   - name: backendContainer
     value: "tfstate"
   - name: stateFile
-    value: "tfstate"
+    value: "${{ parameters.environment }}.terraform.tfstate"
   - name: workingDirectory
     value: "$(System.DefaultWorkingDirectory)/terraform"
 
 # ═══════════════════════════════════════════════════════════════════
-# STAGE 1 — VALIDATE
-# Always runs first regardless of Create or Destroy
+# STAGE 1 — PLAN
 # ═══════════════════════════════════════════════════════════════════
 stages:
-
-  - stage: Validate
-    displayName: "🔍 Validate — ${{ parameters.action }} on ${{ parameters.environment }}"
-    jobs:
-      - job: TerraformValidate
-        displayName: "Terraform Init & Validate"
-        steps:
-
-          # Install specific Terraform version
-          - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
-            displayName: "Install Terraform ${{ variables.terraformVersion }}"
-            inputs:
-              terraformVersion: $(terraformVersion)
-
-          # Init with Azure backend — uses service connection
-          - task: ms-devlabs.custom-terraform-tasks.custom-terraform-task.TerraformTaskV4@4
-            displayName: "Terraform Init"
-            inputs:
-              provider: azurerm
-              command: init
-              workingDirectory: $(workingDirectory)
-              backendServiceArm: subscriptionauthenticator      # ← your service connection
-              backendAzureRmResourceGroupName: $(backendResourceGroup)
-              backendAzureRmStorageAccountName: $(backendStorageAccount)
-              backendAzureRmContainerName: $(backendContainer)
-              backendAzureRmKey: $(stateFile)
-
-          # Validate syntax
-          - task: ms-devlabs.custom-terraform-tasks.custom-terraform-task.TerraformTaskV4@4
-            displayName: "Terraform Validate"
-            inputs:
-              provider: azurerm
-              command: validate
-              workingDirectory: $(workingDirectory)
-              environmentServiceNameAzureRM: subscriptionauthenticator
-
-# ═══════════════════════════════════════════════════════════════════
-# STAGE 2 — PLAN
-# Runs for both Create and Destroy (plan shows what will happen)
-# ═══════════════════════════════════════════════════════════════════
-
   - stage: Plan
-    displayName: "📋 Plan — ${{ parameters.action }}"
-    dependsOn: Validate
+    displayName: "📋 Plan — ${{ parameters.action }} on ${{ parameters.environment }}"
     jobs:
       - job: TerraformPlan
         displayName: "Terraform Plan"
         steps:
 
-          - task: TerraformInstaller@1
-            displayName: "Install Terraform"
-            inputs:
-              terraformVersion: $(terraformVersion)
+          # Install Terraform
+          - script: |
+              wget -q https://releases.hashicorp.com/terraform/$(terraformVersion)/terraform_$(terraformVersion)_linux_amd64.zip
+              unzip -q terraform_$(terraformVersion)_linux_amd64.zip
+              sudo mv terraform /usr/local/bin/
+              terraform version
+            displayName: "Install Terraform $(terraformVersion)"
 
-          - task: TerraformTaskV4@4
+          # Terraform Init — service connection + backend config
+          - task: AzureCLI@2
             displayName: "Terraform Init"
             inputs:
-              provider: azurerm
-              command: init
+              azureSubscription: subscriptionauthenticator
+              scriptType: bash
+              scriptLocation: inlineScript
               workingDirectory: $(workingDirectory)
-              backendServiceArm: subscriptionauthenticator
-              backendAzureRmResourceGroupName: $(backendResourceGroup)
-              backendAzureRmStorageAccountName: $(backendStorageAccount)
-              backendAzureRmContainerName: $(backendContainer)
-              backendAzureRmKey: $(stateFile)
+              addSpnToEnvironment: true
+              inlineScript: |
+                export ARM_CLIENT_ID=$servicePrincipalId
+                export ARM_CLIENT_SECRET=$servicePrincipalKey
+                export ARM_TENANT_ID=$tenantId
+                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-          # Plan for CREATE
-          - task: TerraformTaskV4@4
-            displayName: "Terraform Plan — Create"
-            condition: eq('${{ parameters.action }}', 'Create')
+                terraform init \
+                  -backend-config="resource_group_name=$(backendResourceGroup)" \
+                  -backend-config="storage_account_name=$(backendStorageAccount)" \
+                  -backend-config="container_name=$(backendContainer)" \
+                  -backend-config="key=$(stateFile)"
+
+          # Terraform Plan — Create or Destroy
+          - task: AzureCLI@2
+            displayName: "Terraform Plan (${{ parameters.action }})"
             inputs:
-              provider: azurerm
-              command: plan
+              azureSubscription: subscriptionauthenticator
+              scriptType: bash
+              scriptLocation: inlineScript
               workingDirectory: $(workingDirectory)
-              commandOptions: >
-                -out=tfplan
-                -var="environment=${{ parameters.environment }}"
-                -var="location=${{ parameters.location }}"
-              environmentServiceNameAzureRM: subscriptionauthenticator
+              addSpnToEnvironment: true
+              inlineScript: |
+                export ARM_CLIENT_ID=$servicePrincipalId
+                export ARM_CLIENT_SECRET=$servicePrincipalKey
+                export ARM_TENANT_ID=$tenantId
+                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-          # Plan for DESTROY
-          - task: TerraformTaskV4@4
-            displayName: "Terraform Plan — Destroy"
-            condition: eq('${{ parameters.action }}', 'Destroy')
-            inputs:
-              provider: azurerm
-              command: plan
-              workingDirectory: $(workingDirectory)
-              commandOptions: >
-                -destroy
-                -out=tfplan
-                -var="environment=${{ parameters.environment }}"
-                -var="location=${{ parameters.location }}"
-              environmentServiceNameAzureRM: subscriptionauthenticator
+                if [ "${{ parameters.action }}" = "Destroy" ]; then
+                  terraform plan -destroy -out=tfplan \
+                    -var="environment=${{ parameters.environment }}" \
+                    -var="location=${{ parameters.location }}"
+                else
+                  terraform plan -out=tfplan \
+                    -var="environment=${{ parameters.environment }}" \
+                    -var="location=${{ parameters.location }}"
+                fi
 
-          # Save plan artifact for Apply stage
+          # Save plan artifact
           - task: PublishPipelineArtifact@1
             displayName: "Save Plan Artifact"
             inputs:
@@ -164,54 +124,68 @@ stages:
               artifact: terraform-plan
 
 # ═══════════════════════════════════════════════════════════════════
-# STAGE 3 — APPLY / DESTROY
-# Requires manual approval before running
+# STAGE 2 — APPLY (requires approval gate in ADO Portal)
 # ═══════════════════════════════════════════════════════════════════
-
   - stage: Apply
     displayName: "🚀 ${{ parameters.action }} — ${{ parameters.environment }}"
     dependsOn: Plan
     jobs:
       - deployment: TerraformApply
         displayName: "${{ parameters.action }} Infrastructure"
-        # ↓ Approval gate configured in ADO Portal → Environments
         environment: ${{ parameters.environment }}
         strategy:
           runOnce:
             deploy:
               steps:
 
-                - task: TerraformInstaller@1
+                # Install Terraform
+                - script: |
+                    wget -q https://releases.hashicorp.com/terraform/$(terraformVersion)/terraform_$(terraformVersion)_linux_amd64.zip
+                    unzip -q terraform_$(terraformVersion)_linux_amd64.zip
+                    sudo mv terraform /usr/local/bin/
+                    terraform version
                   displayName: "Install Terraform"
-                  inputs:
-                    terraformVersion: $(terraformVersion)
 
-                - task: TerraformTaskV4@4
-                  displayName: "Terraform Init"
-                  inputs:
-                    provider: azurerm
-                    command: init
-                    workingDirectory: $(workingDirectory)
-                    backendServiceArm: subscriptionauthenticator
-                    backendAzureRmResourceGroupName: $(backendResourceGroup)
-                    backendAzureRmStorageAccountName: $(backendStorageAccount)
-                    backendAzureRmContainerName: $(backendContainer)
-                    backendAzureRmKey: $(stateFile)
-
-                # Download the saved plan
+                # Download saved plan
                 - task: DownloadPipelineArtifact@2
                   displayName: "Download Plan Artifact"
                   inputs:
                     artifact: terraform-plan
                     path: $(workingDirectory)
 
-                # Apply (works for both create and destroy
-                # because plan already has -destroy flag baked in)
-                - task: TerraformTaskV4@4
+                # Terraform Init with backend
+                - task: AzureCLI@2
+                  displayName: "Terraform Init"
+                  inputs:
+                    azureSubscription: subscriptionauthenticator
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    workingDirectory: $(workingDirectory)
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      export ARM_CLIENT_ID=$servicePrincipalId
+                      export ARM_CLIENT_SECRET=$servicePrincipalKey
+                      export ARM_TENANT_ID=$tenantId
+                      export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+                      terraform init \
+                        -backend-config="resource_group_name=$(backendResourceGroup)" \
+                        -backend-config="storage_account_name=$(backendStorageAccount)" \
+                        -backend-config="container_name=$(backendContainer)" \
+                        -backend-config="key=$(stateFile)"
+
+                # Terraform Apply
+                - task: AzureCLI@2
                   displayName: "Terraform ${{ parameters.action }}"
                   inputs:
-                    provider: azurerm
-                    command: apply
+                    azureSubscription: subscriptionauthenticator
+                    scriptType: bash
+                    scriptLocation: inlineScript
                     workingDirectory: $(workingDirectory)
-                    commandOptions: "-auto-approve tfplan"
-                    environmentServiceNameAzureRM: subscriptionauthenticator
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      export ARM_CLIENT_ID=$servicePrincipalId
+                      export ARM_CLIENT_SECRET=$servicePrincipalKey
+                      export ARM_TENANT_ID=$tenantId
+                      export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                      terraform apply -auto-approve tfplan
