@@ -14,5 +14,5 @@ terraform {
 
 provider "azurerm" {
   features {}
-  # Authentication handled by ADO service connection
+  use_cli = false
 }
