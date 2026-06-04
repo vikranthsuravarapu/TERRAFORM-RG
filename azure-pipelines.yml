@@ -74,7 +74,7 @@ stages:
           - task: AzureCLI@2
             displayName: "Terraform Init"
             inputs:
-              azureSubscription: subscriptionauthenticator
+              azureSubscription: Subscriptionconnection1
               scriptType: bash
               scriptLocation: inlineScript
               workingDirectory: $(workingDirectory)
@@ -95,7 +95,7 @@ stages:
           - task: AzureCLI@2
             displayName: "Terraform Plan (${{ parameters.action }})"
             inputs:
-              azureSubscription: subscriptionauthenticator
+              azureSubscription: Subscriptionconnection1
               scriptType: bash
               scriptLocation: inlineScript
               workingDirectory: $(workingDirectory)
@@ -157,7 +157,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: "Terraform Init"
                   inputs:
-                    azureSubscription: subscriptionauthenticator
+                    azureSubscription: Subscriptionconnection1
                     scriptType: bash
                     scriptLocation: inlineScript
                     workingDirectory: $(workingDirectory)
@@ -178,7 +178,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: "Terraform ${{ parameters.action }}"
                   inputs:
-                    azureSubscription: subscriptionauthenticator
+                    azureSubscription: Subscriptionconnection1
                     scriptType: bash
                     scriptLocation: inlineScript
                     workingDirectory: $(workingDirectory)
