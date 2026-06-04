@@ -70,13 +70,13 @@ stages:
         steps:
 
           # Install specific Terraform version
-          - task: TerraformInstaller@1
+          - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
             displayName: "Install Terraform ${{ variables.terraformVersion }}"
             inputs:
               terraformVersion: $(terraformVersion)
 
           # Init with Azure backend — uses service connection
-          - task: TerraformTaskV4@4
+          - task: ms-devlabs.custom-terraform-tasks.custom-terraform-task.TerraformTaskV4@4
             displayName: "Terraform Init"
             inputs:
               provider: azurerm
@@ -89,7 +89,7 @@ stages:
               backendAzureRmKey: $(stateFile)
 
           # Validate syntax
-          - task: TerraformTaskV4@4
+          - task: ms-devlabs.custom-terraform-tasks.custom-terraform-task.TerraformTaskV4@4
             displayName: "Terraform Validate"
             inputs:
               provider: azurerm
