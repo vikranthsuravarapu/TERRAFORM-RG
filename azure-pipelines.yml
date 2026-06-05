@@ -172,6 +172,7 @@ stages:
                       export ARM_USE_OIDC=true
 
                       terraform init \
+                        -lockfile=readonly \
                         -backend-config="resource_group_name=$(backendResourceGroup)" \
                         -backend-config="storage_account_name=$(backendStorageAccount)" \
                         -backend-config="container_name=$(backendContainer)" \
