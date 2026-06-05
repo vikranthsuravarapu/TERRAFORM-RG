@@ -1,6 +1,7 @@
 # ═══════════════════════════════════════════════════════════════════
 # ADO Terraform Pipeline — OIDC/Workload Identity Federation
 # No Extensions, Service Connection Auth
+# Fix: Publish entire working directory to preserve .terraform folder
 # ═══════════════════════════════════════════════════════════════════
 
 trigger: none
@@ -118,11 +119,13 @@ stages:
                     -var="location=${{ parameters.location }}"
                 fi
 
-          # Save plan artifact
+          # ── KEY FIX: Publish entire working directory
+          # This includes tfplan + .terraform folder + .terraform.lock.hcl
+          # Apply stage reuses exact same state — no re-init needed
           - task: PublishPipelineArtifact@1
             displayName: "Save Plan Artifact"
             inputs:
-              targetPath: "$(workingDirectory)/tfplan"
+              targetPath: "$(workingDirectory)"
               artifact: terraform-plan
 
 # ═══════════════════════════════════════════════════════════════════
@@ -148,35 +151,15 @@ stages:
                     terraform version
                   displayName: "Install Terraform"
 
-                # Download saved plan
+                # ── KEY FIX: Download entire working directory
+                # Restores tfplan + .terraform folder — no re-init needed
                 - task: DownloadPipelineArtifact@2
                   displayName: "Download Plan Artifact"
                   inputs:
                     artifact: terraform-plan
                     path: $(workingDirectory)
 
-                # Terraform Init with backend
-                - task: AzureCLI@2
-                  displayName: "Terraform Init"
-                  inputs:
-                    azureSubscription: Subscriptionconnection1
-                    scriptType: bash
-                    scriptLocation: inlineScript
-                    workingDirectory: $(workingDirectory)
-                    addSpnToEnvironment: true
-                    inlineScript: |
-                      export ARM_CLIENT_ID=$servicePrincipalId
-                      export ARM_OIDC_TOKEN=$idToken
-                      export ARM_TENANT_ID=$tenantId
-                      export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-                      export ARM_USE_OIDC=true
-
-                      terraform init \
-                        -lockfile=readonly \
-                        -backend-config="resource_group_name=$(backendResourceGroup)" \
-                        -backend-config="storage_account_name=$(backendStorageAccount)" \
-                        -backend-config="container_name=$(backendContainer)" \
-                        -backend-config="key=$(stateFile)"
+                # ── NO terraform init in Apply — reusing Plan's .terraform folder
 
                 # Terraform Apply
                 - task: AzureCLI@2
