@@ -176,4 +176,6 @@ stages:
                       export ARM_TENANT_ID=$tenantId
                       export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
                       export ARM_USE_OIDC=true
+                      # Fix permission on provider binary
+                      chmod -R +x .terraform/providers/
                       terraform apply -auto-approve tfplan
