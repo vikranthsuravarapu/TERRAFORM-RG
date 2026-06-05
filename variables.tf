@@ -16,5 +16,6 @@ variable "tags" {
   default     = {
     environment = "dev"
     owner       = "vikram"
+    managed_by  = "terraform"
   }
 }
