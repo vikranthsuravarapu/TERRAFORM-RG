@@ -19,3 +19,9 @@ variable "tags" {
     managed_by  = "terraform"
   }
 }
+
+variable "environment" {
+  description = "Target environment"
+  type        = string
+  default     = "dev"
+}
